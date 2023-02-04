@@ -9,6 +9,23 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// fill the bucket with 5 tokens. This applies to all chats where bot is active for simplicity
+var rateLimit = 5
+
+func handleUpdate(update tgbotapi.Update, bot *tgbotapi.BotAPI) {
+	log.Printf("received update and message is %+v\n ", update.Message)
+	if strings.ToLower(update.Message.Text) == "ola" {
+		if rateLimit > 0 {
+			rateLimit--
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "ola")
+			msg.ReplyToMessageID = update.Message.MessageID
+			bot.Send(msg)
+		} else {
+			log.Print("rate limit exceeded")
+		}	
+	}
+}
+
 func main() {
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
 	bot, err := tgbotapi.NewBotAPI(token)
@@ -26,37 +43,17 @@ func main() {
 	// don't make the bot inline bot
 
 	updates := bot.GetUpdatesChan(u)
-	counter := 0
-	reset := time.Tick(time.Minute)
+	ticker := time.NewTicker(time.Minute)
 
-	for update := range updates {
-		if update.Message != nil {
-				select {
-				case <-reset:
-					counter = 0
-				default:
-					log.Printf("counter is %d", counter)
-					if counter < 5 {
-						if 	strings.ToLower(update.Message.Text) == "ola" {
-							counter++
-							if counter > 5 {
-								counter = 0
-								<-reset
-							} else {
-								log.Printf("hello [%s] %s", update.Message.From.UserName, update.Message.Text)
-			
-								msg := tgbotapi.NewMessage(update.Message.Chat.ID, "ola")
-								msg.ReplyToMessageID = update.Message.MessageID
-			
-								bot.Send(msg)
-							}
-			
-						}
-					} else {
-						log.Printf("Rate limit reached. Try again in %s", time.Until(time.Now().Truncate(time.Minute).Add(time.Minute)))
-					}
-				}
-			
+	for {
+		select {
+		case update := <-updates:
+			if update.Message != nil {
+				handleUpdate(update, bot)
+			}
+		case <-ticker.C:
+			log.Println("tick")
+			rateLimit = 5
 		}
 	}
 }
